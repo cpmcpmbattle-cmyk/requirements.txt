@@ -21,7 +21,7 @@ from flask import Flask
 # ==========================================
 # BOT VA BAZA SOZLAMALARI
 # ==========================================
-BOT_TOKEN = "8860001735:AAFkws82v2sTzgK1TXtxv-N0MmSseiHFJhk"
+BOT_TOKEN = "8734592942:AAFeKV1VP5F6hCxM4cIuQZUOYvD3298yOPI"
 MONGO_URL = "mongodb+srv://cpmcpmbattle_db_user:lKQN2ePocUCIM9zi@cluster0.brsfu0p.mongodb.net/?appName=Cluster0" 
 DB_NAME = "konkurs_bot_db"
 ADMIN_ID = 6968399046  # Telegram ID ingiz (son ko'rinishida)
