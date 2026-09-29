@@ -21,8 +21,8 @@ from flask import Flask
 # ==========================================
 # BOT VA BAZA SOZLAMALARI
 # ==========================================
-BOT_TOKEN = "8734592942:AAFeKV1VP5F6hCxM4cIuQZUOYvD3298yOPI"
-MONGO_URL = "mongodb+srv://cpmcpmbattle_db_user:lKQN2ePocUCIM9zi@cluster0.brsfu0p.mongodb.net/?appName=Cluster0" 
+BOT_TOKEN = "8860001735:AAFkws82v2sTzgK1TXtxv-N0MmSseiHFJhk"
+MONGO_URL = "mongodb+srv://cpmcpmbattle_db_user:lKQN2ePocUCIM9zi@cluster0.brsfu0p.mongodb.net/?appName=Cluster0"  # MongoDB Atlas havolasi (Render uchun) yoki lokal "mongodb://localhost:27017"
 DB_NAME = "konkurs_bot_db"
 ADMIN_ID = 6968399046  # Telegram ID ingiz (son ko'rinishida)
 
@@ -69,7 +69,7 @@ TEXTS = {
         'btn_admin_channels': "| MAJBURIY OBUNA ULASH 📣 |",
         'ask_prizes_count': "Nechta akkaunt qoʻyamiz?\nYozing📦\n(Faqat son koʻrinishida)",
         'ask_max_users': "Endi nechta odam qatnasha oladi?\nYozing ✉️\n(Faqat son koʻrinishida)",
-        'ask_accounts': "Konkursga qoʻyilgan akkauntlarni yuboring🔖\n(Har bir akkauntni yangi qatordan yozing)\nMisol:\n1.javatest@gmail.com\n2.javatest2@gmail.com",
+        'ask_accounts': "Akkauntlarni quyidagi formatda yuboring🔖:\n\n<code>01 | email | parol | OK</code>\n<code>02 | email | parol | OK</code>\n\n(Har bir akkauntni yangi qatordan yozing)",
         'channel_msg_title': "Konkurs boshlandi 📣\n\nYutuqlar🎁: {prizes_count}ta akkaunt\nTugashi: {current}/{max_users}\n\nQatnashish uchun pastdagi tugmani bosing!",
         'btn_channel_join': "KOʻNKURSGA QATNASHING🎁",
         'must_subscribe': "Botdan foydalanish uchun quyidagi kanallarga a'zo bo'ling:",
@@ -106,10 +106,10 @@ TEXTS = {
         'btn_admin_channels': "| ОБЯЗАТЕЛЬНАЯ ПОДПИСКА 📣 |",
         'ask_prizes_count': "Сколько аккаунтов разыгрываем?\nНапишите 📦\n(Только число)",
         'ask_max_users': "Сколько человек может участвовать?\nНапишите ✉️\n(Только число)",
-        'ask_accounts': "Отправьте аккаунты для конкурса 🔖\n(Каждый аккаунт с новой строки)\nПример:\n1.javatest@gmail.com\n2.javatest2@gmail.com",
+        'ask_accounts': "Отправьте аккаунты в формате🔖:\n\n<code>01 | email | pass | OK</code>\n<code>02 | email | pass | OK</code>",
         'channel_msg_title': "Конкурс начался 📣\n\nПризы🎁: {prizes_count} шт. аккаунтов\nЗавершение: {current}/{max_users}\n\nНажмите кнопку ниже для участия!",
         'btn_channel_join': "УЧАСТВОВАТЬ В КОНКУРСЕ🎁",
-        'must_subscribe': "Для участия в боте подпишитесь на каналы:",
+        'must_subscribe': "Для использования бота подпишитесь на каналы:",
         'already_joined': "Вы уже участвуете в этом конкурсе!",
         'joined_success': "Вы успешно участвовали✅",
         'no_prizes': "У вас пока нет выигранных призов 🛒",
@@ -125,9 +125,9 @@ TEXTS = {
         'type_channel': "ОБЫЧНЫЙ КАНАЛ📣",
         'type_group': "ЧАТ ГРУППА ✉️",
         'type_request': "ЗАЯВКА КАНАЛ📦",
-        'ask_channel_link': "Отправьте username или ссылку на канал (Например: @channel или https://t.me/channel):\n<i>Бот должен быть админом!</i>",
-        'ask_group_link': "Отправьте username или ссылку на группу (Например: @group или https://t.me/group):\n<i>Бот должен быть админом!</i>",
-        'ask_request_link': "Отправьте ссылку-заявку (Например: https://t.me/+AbCdEfGhIj):\n<i>Бот должен быть админом в этом канале!</i>",
+        'ask_channel_link': "Отправьте username или ссылку на канал (Например: @channel):\n<i>Бот должен быть админом!</i>",
+        'ask_group_link': "Отправьте username или ссылку на группу (Например: @group):\n<i>Бот должен быть админом!</i>",
+        'ask_request_link': "Отправьте ссылку-заявку (Например: https://t.me/+...):\n<i>Бот должен быть админом в этом канале!</i>",
         'channel_added': "✅ Успешно добавлено!",
         'channel_deleted': "🗑 Обязательная подписка успешно удалена!",
         'check_sub_btn': "✅ Проверить",
@@ -143,7 +143,7 @@ TEXTS = {
         'btn_admin_channels': "| MANDATORY SUBS 📣 |",
         'ask_prizes_count': "How many accounts to giveaway?\nWrite 📦\n(Numbers only)",
         'ask_max_users': "How many participants can join?\nWrite ✉️\n(Numbers only)",
-        'ask_accounts': "Send accounts for contest 🔖\n(Each account on a new line)\nExample:\n1.javatest@gmail.com\n2.javatest2@gmail.com",
+        'ask_accounts': "Send accounts as format🔖:\n\n<code>01 | email | pass | OK</code>\n<code>02 | email | pass | OK</code>",
         'channel_msg_title': "Contest started 📣\n\nPrizes🎁: {prizes_count} accounts\nProgress: {current}/{max_users}\n\nClick button below to participate!",
         'btn_channel_join': "JOIN CONTEST🎁",
         'must_subscribe': "Subscribe to channels to use the bot:",
@@ -162,15 +162,21 @@ TEXTS = {
         'type_channel': "REGULAR CHANNEL📣",
         'type_group': "CHAT GROUP ✉️",
         'type_request': "REQUEST CHANNEL📦",
-        'ask_channel_link': "Send channel username or link (e.g., @channel or https://t.me/channel):\n<i>Bot must be admin in channel!</i>",
-        'ask_group_link': "Send group username or link (e.g., @group or https://t.me/group):\n<i>Bot must be admin in group!</i>",
-        'ask_request_link': "Send Join Request invite link (e.g., https://t.me/+AbCdEfGhIj):\n<i>Bot must be admin in channel!</i>",
+        'ask_channel_link': "Send channel username or link:\n<i>Bot must be admin in channel!</i>",
+        'ask_group_link': "Send group username or link:\n<i>Bot must be admin in group!</i>",
+        'ask_request_link': "Send Join Request invite link:\n<i>Bot must be admin in channel!</i>",
         'channel_added': "✅ Successfully added!",
         'channel_deleted': "🗑 Mandatory subscription removed!",
         'check_sub_btn': "✅ Check",
         'no_channels_to_del': "No mandatory subscriptions added yet."
     }
 }
+
+ALL_PRIZES_BTNS = [t['btn_prizes'] for t in TEXTS.values()]
+ALL_LANG_BTNS = [t['btn_lang'] for t in TEXTS.values()]
+ALL_ADMIN_CREATE_BTNS = [t['btn_admin_create'] for t in TEXTS.values()]
+ALL_ADMIN_STAT_BTNS = [t['btn_admin_stat'] for t in TEXTS.values()]
+ALL_ADMIN_CHANNELS_BTNS = [t['btn_admin_channels'] for t in TEXTS.values()]
 
 # ==========================================
 # FSM STATES
@@ -213,8 +219,17 @@ def language_keyboard():
         ]
     ])
 
+def fix_url(url_str: str) -> str:
+    if not url_str: return "https://t.me"
+    url_str = url_str.strip()
+    if url_str.startswith(("http://", "https://")): return url_str
+    if url_str.startswith("@"): return f"https://t.me/{url_str[1:]}"
+    return f"https://t.me/{url_str}"
+
 async def check_user_subscriptions(user_id: int) -> bool:
     channels = await channels_col.find().to_list(length=100)
+    if not channels:
+        return True
     for ch in channels:
         ch_type = ch.get('type', 'channel')
         chat_id = ch.get('chat_id') or ch.get('channel_id')
@@ -227,7 +242,7 @@ async def check_user_subscriptions(user_id: int) -> bool:
             except Exception:
                 pass
         elif ch_type == 'request':
-            req = await join_requests_col.find_one({"user_id": user_id})
+            req = await join_requests_col.find_one({"user_id": user_id, "chat_id": chat_id})
             if not req:
                 return False
     return True
@@ -237,9 +252,10 @@ async def get_required_channels_keyboard(lang: str, contest_id: str = None):
     buttons = []
     for channel in channels:
         title = channel.get("title", "Kanal")
-        url = channel.get("url")
-        if url:
-            buttons.append([InlineKeyboardButton(text=f"📣 {title}", url=url)])
+        raw_url = channel.get("url")
+        if raw_url:
+            clean_url = fix_url(raw_url)
+            buttons.append([InlineKeyboardButton(text=f"📣 {title}", url=clean_url)])
 
     callback_data = "check_main_sub"
     if contest_id:
@@ -260,20 +276,16 @@ async def handle_join_request(update: ChatJoinRequest):
     )
 
 # ==========================================
-# START VA TIL TANLASH (TALABGA BINOAN)
+# START VA TIL TANLASH
 # ==========================================
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     args = message.text.split()
-    contest_id = None
-
-    if len(args) > 1 and args[1].startswith("contest_"):
-        contest_id = args[1].replace("contest_", "")
+    contest_id = args[1].replace("contest_", "") if len(args) > 1 and args[1].startswith("contest_") else None
 
     lang = await get_user_lang(user_id)
 
-    # 1. Agar tili tanlanmagan bo'lsa -> Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺
     if not lang:
         await users_col.update_one(
             {"user_id": user_id},
@@ -283,24 +295,22 @@ async def cmd_start(message: types.Message):
         await message.answer(TEXTS['uz']['choose_lang'], reply_markup=language_keyboard())
         return
 
-    # 2. Saqlangan til bo'yicha majburiy kanallarga obuna bo'lishni so'rash
     is_subbed = await check_user_subscriptions(user_id)
     if not is_subbed:
         keyboard = await get_required_channels_keyboard(lang=lang, contest_id=contest_id)
         await message.answer(TEXTS[lang]['must_subscribe'], reply_markup=keyboard)
         return
 
-    # 3. Agar obuna bo'lingan va konkurs linki orqali kelgan bo'lsa
     if contest_id:
         await process_join_contest(user_id, contest_id, message)
         return
 
     await message.answer(TEXTS[lang]['welcome'], reply_markup=get_main_keyboard(user_id, lang))
 
-@dp.callback_query(F.data.startswith("choose_lang_"))
+@dp.callback_query(F.data.in_(["choose_lang_uz", "choose_lang_ru", "choose_lang_en", "setlang_uz", "setlang_ru", "setlang_en"]))
 async def choose_language(call: CallbackQuery):
     user_id = call.from_user.id
-    new_lang = call.data.replace("choose_lang_", "")
+    new_lang = call.data.split("_")[-1]
 
     if new_lang not in TEXTS:
         await call.answer("Error", show_alert=True)
@@ -309,7 +319,6 @@ async def choose_language(call: CallbackQuery):
     user = await users_col.find_one({"user_id": user_id})
     pending_contest_id = user.get("pending_contest_id") if user else None
 
-    # Tilni saqlaymiz
     await users_col.update_one(
         {"user_id": user_id},
         {"$set": {"lang": new_lang, "updated_at": datetime.now()}, "$unset": {"pending_contest_id": ""}},
@@ -322,7 +331,6 @@ async def choose_language(call: CallbackQuery):
     except Exception:
         pass
 
-    # Endi saqlangan yangi til bo'yicha obunalarni tekshiramiz va so'raymiz
     is_subbed = await check_user_subscriptions(user_id)
     if not is_subbed:
         keyboard = await get_required_channels_keyboard(lang=new_lang, contest_id=pending_contest_id)
@@ -353,10 +361,10 @@ async def check_main_subscription(call: CallbackQuery):
 async def check_contest_subscription(call: CallbackQuery):
     user_id = call.from_user.id
     contest_id = call.data.replace("check_contest_sub_", "")
-    lang = await get_user_lang(user_id) or 'uz'
 
     is_subbed = await check_user_subscriptions(user_id)
     if not is_subbed:
+        lang = await get_user_lang(user_id) or 'uz'
         err_msg = "Siz hali barcha kanallarga obuna bo'lmadingiz! ❌" if lang == 'uz' else ("Вы еще не подписались на все каналы! ❌" if lang == 'ru' else "You have not subscribed to all channels! ❌")
         await call.answer(err_msg, show_alert=True)
         return
@@ -364,18 +372,26 @@ async def check_contest_subscription(call: CallbackQuery):
     await call.message.delete()
     await process_join_contest(user_id, contest_id, call.message)
 
-@dp.message(F.text.in_([TEXTS['uz']['btn_lang'], TEXTS['ru']['btn_lang'], TEXTS['en']['btn_lang']]))
+# ==========================================
+# MENYU TUGMALARI
+# ==========================================
+@dp.message(F.text.in_(ALL_LANG_BTNS) | F.text.contains("TIL ALMASHTIRISH") | F.text.contains("СМЕНА ЯЗЫКА") | F.text.contains("CHANGE LANGUAGE"))
 async def process_change_lang(message: types.Message):
     await message.answer("Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺:", reply_markup=language_keyboard())
 
-# ==========================================
-# SOVRINLAR
-# ==========================================
-@dp.message(F.text.in_([TEXTS['uz']['btn_prizes'], TEXTS['ru']['btn_prizes'], TEXTS['en']['btn_prizes']]))
+@dp.message(F.text.in_(ALL_PRIZES_BTNS) | F.text.contains("YUTGAN SOVRINLAR") | F.text.contains("МОИ ПРИЗЫ") | F.text.contains("MY PRIZES"))
 async def show_prizes(message: types.Message):
-    lang = await get_user_lang(message.from_user.id) or 'uz'
+    user_id = message.from_user.id
+    lang = await get_user_lang(user_id) or 'uz'
+
+    is_subbed = await check_user_subscriptions(user_id)
+    if not is_subbed:
+        keyboard = await get_required_channels_keyboard(lang=lang)
+        await message.answer(TEXTS[lang]['must_subscribe'], reply_markup=keyboard)
+        return
+
     t = TEXTS[lang]
-    prizes = await prizes_col.find({"user_id": message.from_user.id}).to_list(length=100)
+    prizes = await prizes_col.find({"user_id": user_id}).to_list(length=100)
     
     if not prizes:
         await message.answer(t['no_prizes'])
@@ -385,10 +401,7 @@ async def show_prizes(message: types.Message):
             text += f"{idx}. <code>{p['account']}</code>\n"
         await message.answer(text, parse_mode="HTML")
 
-# ==========================================
-# MAJBURIY OBUNA BOSHQARUVI
-# ==========================================
-@dp.message(F.text.in_([TEXTS['uz']['btn_admin_channels'], TEXTS['ru']['btn_admin_channels'], TEXTS['en']['btn_admin_channels']]))
+@dp.message(F.text.in_(ALL_ADMIN_CHANNELS_BTNS) | F.text.contains("MAJBURIY OBUNA") | F.text.contains("ОБЯЗАТЕЛЬНАЯ ПОДПИСКА") | F.text.contains("MANDATORY SUBS"))
 async def admin_channels_menu(message: types.Message):
     if message.from_user.id != ADMIN_ID: return
     lang = await get_user_lang(message.from_user.id) or 'uz'
@@ -400,6 +413,24 @@ async def admin_channels_menu(message: types.Message):
     ])
     await message.answer(t['channels_menu'], reply_markup=kb)
 
+@dp.message(F.text.in_(ALL_ADMIN_CREATE_BTNS) | F.text.contains("KONKURS YARATISH") | F.text.contains("СОЗДАТЬ КОНКУРС") | F.text.contains("CREATE CONTEST"))
+async def admin_start_create(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID: return
+    lang = await get_user_lang(message.from_user.id) or 'uz'
+    await state.update_data(admin_lang=lang)
+    await message.answer(TEXTS[lang]['ask_prizes_count'])
+    await state.set_state(AdminCreateContest.waiting_prizes_count)
+
+@dp.message(F.text.in_(ALL_ADMIN_STAT_BTNS) | F.text.contains("STATISTIKASI") | F.text.contains("СТАТИСТИКА") | F.text.contains("STATS"))
+async def show_stats(message: types.Message):
+    if message.from_user.id != ADMIN_ID: return
+    users_count = await users_col.count_documents({})
+    contests_count = await contests_col.count_documents({})
+    await message.answer(f"📊 <b>Bot Statistikasi:</b>\n\n👤 Jami foydalanuvchilar: {users_count}\n🛒 O'tkazilgan konkurslar: {contests_count}", parse_mode="HTML")
+
+# ==========================================
+# ADMIN: MAJBURIY OBUNA BOSHQARUVI
+# ==========================================
 @dp.callback_query(F.data == "sub_add_menu")
 async def choose_sub_type(call: CallbackQuery):
     lang = await get_user_lang(call.from_user.id) or 'uz'
@@ -441,9 +472,9 @@ async def process_save_channel(message: types.Message, state: FSMContext):
             chat = await bot.get_chat(chat_identifier)
             chat_id = chat.id
             title = chat.title
-            link = f"https://t.me/{chat.username}" if chat.username else input_val
+            link = fix_url(f"https://t.me/{chat.username}" if chat.username else input_val)
         else:
-            link = input_val
+            link = fix_url(input_val)
             title = f"Zayafka Kanal ({input_val})"
             chat_id = None
             
@@ -488,16 +519,8 @@ async def confirm_del_channel(call: CallbackQuery):
     await call.message.edit_text(t['channel_deleted'])
 
 # ==========================================
-# ADMIN: KONKURS YARATISH
+# ADMIN: KONKURS YARATISH (FORMAT QABUL QILISHI BILAN)
 # ==========================================
-@dp.message(F.text.in_([TEXTS['uz']['btn_admin_create'], TEXTS['ru']['btn_admin_create'], TEXTS['en']['btn_admin_create']]))
-async def admin_start_create(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID: return
-    lang = await get_user_lang(message.from_user.id) or 'uz'
-    await state.update_data(admin_lang=lang)
-    await message.answer(TEXTS[lang]['ask_prizes_count'])
-    await state.set_state(AdminCreateContest.waiting_prizes_count)
-
 @dp.message(AdminCreateContest.waiting_prizes_count)
 async def process_prizes_count(message: types.Message, state: FSMContext):
     lang = await get_user_lang(message.from_user.id) or 'uz'
@@ -515,7 +538,7 @@ async def process_max_users(message: types.Message, state: FSMContext):
         await message.answer(TEXTS[lang]['invalid_number'])
         return
     await state.update_data(max_users=int(message.text))
-    await message.answer(TEXTS[lang]['ask_accounts'])
+    await message.answer(TEXTS[lang]['ask_accounts'], parse_mode="HTML")
     await state.set_state(AdminCreateContest.waiting_accounts)
 
 @dp.message(AdminCreateContest.waiting_accounts)
@@ -590,7 +613,7 @@ async def publish_contest(call: CallbackQuery, state: FSMContext):
     await state.clear()
 
 # ==========================================
-# KONKURSGA QATNASHISH
+# KONKURSGA QATNASHISH VA YAKUNLASH
 # ==========================================
 async def process_join_contest(user_id: int, contest_id_str: str, message: types.Message):
     lang = await get_user_lang(user_id) or 'uz'
@@ -650,9 +673,6 @@ async def process_join_contest(user_id: int, contest_id_str: str, message: types
     if curr >= max_u:
         await finish_contest(contest_obj_id)
 
-# ==========================================
-# G'OLIBLARNI ANIQLASH
-# ==========================================
 async def finish_contest(contest_obj_id: ObjectId):
     contest = await contests_col.find_one({"_id": contest_obj_id})
     if not contest or contest['status'] != 'active':
@@ -674,7 +694,7 @@ async def finish_contest(contest_obj_id: ObjectId):
     medals = ["1️⃣ OʻRIN🥇", "2️⃣ OʻRIN🥈", "3️⃣ OʻRIN🥉", "4️⃣ OʻRIN🏆", "5️⃣ OʻRIN🏆", "6️⃣ OʻRIN🏆", "7️⃣ OʻRIN🏆", "8️⃣ OʻRIN🏆", "9️⃣ OʻRIN🏆", "🔟 OʻRIN🏆"]
 
     for idx, winner_id in enumerate(winners):
-        account = accounts[idx]
+        account = accounts[idx] # Format: 01 | email | parol | OK
         await prizes_col.insert_one({
             "user_id": winner_id,
             "contest_id": str(contest_obj_id),
@@ -709,22 +729,16 @@ async def finish_contest(contest_obj_id: ObjectId):
         pass
 
 # ==========================================
-# STATISTIKA
-# ==========================================
-@dp.message(F.text.in_([TEXTS['uz']['btn_admin_stat'], TEXTS['ru']['btn_admin_stat'], TEXTS['en']['btn_admin_stat']]))
-async def show_stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID: return
-    users_count = await users_col.count_documents({})
-    contests_count = await contests_col.count_documents({})
-    await message.answer(f"📊 <b>Bot Statistikasi:</b>\n\n👤 Jami foydalanuvchilar: {users_count}\n🛒 O'tkazilgan konkurslar: {contests_count}", parse_mode="HTML")
-
-# ==========================================
-# ASOSIY ISHGA TUSHIRISH
+# ASOSIY ISHGA TUSHIRISH (MAIN)
 # ==========================================
 async def main():
     threading.Thread(target=run_flask, daemon=True).start()
     logging.basicConfig(level=logging.INFO)
-    print("Bot 100% tayyor va ishga tushdi!")
+    
+    # Render konflikti oldini olish uchun webhookni tozalash
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    print("Bot 100% mukammal va barcha funksiyalar bilan ishga tushdi!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
