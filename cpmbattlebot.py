@@ -10,7 +10,7 @@ from flask import Flask
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -19,14 +19,13 @@ from aiogram.types import (
     InlineKeyboardButton, CallbackQuery, ChatJoinRequest
 )
 
-# Configure these in Render -> Environment. Do not commit real secrets.
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8734592942:AAFeKV1VP5F6hCxM4cIuQZUOYvD3298yOPI")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://cpmcpmbattle_db_user:lKQN2ePocUCIM9zi@cluster0.brsfu0p.mongodb.net/?appName=Cluster0")
 DB_NAME = os.getenv("DB_NAME", "konkurs_bot")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6968399046"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6968399046."))
 PORT = int(os.getenv("PORT", "8080"))
 
-if BOT_TOKEN == "BOT_TOKENINGIZNI_YOZING":
+if BOT_TOKEN == "BOT_TOKENINGIZNI_SHUYERGA_YOZING":
     raise RuntimeError("Set BOT_TOKEN in Render Environment Variables")
 
 logging.basicConfig(level=logging.INFO)
@@ -65,7 +64,11 @@ TEXTS = {
         "started_en": "The contest has started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button GOO 👇",
         "goo": "GOO 🎁", "subscribe": "Davom etish uchun quyidagi kanallarga a'zo bo'ling:",
         "check": "✅ Tekshirish", "joined": "Siz muvaffaqiyatli qatnashdingiz✅", "already": "Siz allaqachon qatnashyapsiz!",
-        "finished": "🏁 <b>KOʻNKURS YAKUNLANDI</b>\n\n{winners}", "no_prizes": "Siz hali sovrin yutmadingiz.",
+        "finished_uz": "🏁 <b>KOʻNKURS YAKUNLANDI</b>\n\n{winners}",
+        "finished_en": "🏁 <b>CONTEST FINISHED</b>\n\n{winners}",
+        "won_account": "🎉 Tabriklaymiz! Siz yutdingiz:\n<code>{prize}</code>\n\n✨Yutuqni olish uchun\n@cpm_java ga yozing 🎁",
+        "won_other": "🎉 Tabriklaymiz! Siz yutdingiz:\n{prize}\n\n✨Yutuqni olish uchun\n@cpm_java ga yozing 🎁",
+        "no_prizes": "Siz hali sovrin yutmadingiz.",
         "my_prizes": "🛒 Siz yutgan sovrinlar:\n", "channels_menu": "Majburiy obuna boshqaruvi:",
         "add": "➕ Majburiy obuna qoʻshish", "remove": "➖ Majburiy obunani olib tashlash",
         "choose_sub": "Turini tanlang:", "channel": "ODDIY KANAL📣", "group": "CHAT GURUH ✉️", "request": "ZAYAFKA KANAL📦",
@@ -86,7 +89,12 @@ TEXTS = {
         "pick_channel": "Выберите канал для конкурса:", "started": "Конкурс начался 📣\n\nПризы🎁: {prizes}\nЗавершение: {current}/{limit}\n\nНажмите кнопку ниже!",
         "started_en": "The contest has started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button GOO 👇", "goo": "GOO 🎁",
         "subscribe": "Подпишитесь на каналы, чтобы продолжить:", "check": "✅ Проверить", "joined": "Вы успешно участвуете✅",
-        "already": "Вы уже участвуете!", "finished": "🏁 <b>КОНКУРС ЗАВЕРШЕН</b>\n\n{winners}", "no_prizes": "Вы пока не выиграли.",
+        "already": "Вы уже участвуете!",
+        "finished_uz": "🏁 <b>КОНКУРС ЗАВЕРШЕН</b>\n\n{winners}",
+        "finished_en": "🏁 <b>CONTEST FINISHED</b>\n\n{winners}",
+        "won_account": "🎉 Поздравляем! Ваш выигрыш:\n<code>{prize}</code>\n\n✨Для получения приза\nнапишите @cpm_java 🎁",
+        "won_other": "🎉 Поздравляем! Ваш выигрыш:\n{prize}\n\n✨Для получения приза\nнапишите @cpm_java 🎁",
+        "no_prizes": "Вы пока не выиграли.",
         "my_prizes": "🛒 Ваши призы:\n", "channels_menu": "Управление подписками:", "add": "➕ Добавить подписку",
         "remove": "➖ Удалить подписку", "choose_sub": "Выберите тип:", "channel": "КАНАЛ📣", "group": "ГРУППА ✉️", "request": "ЗАЯВКА📦",
         "ask_channel": "Отправьте username или ссылку канала. Бот должен быть администратором.", "ask_group": "Отправьте username или ссылку группы. Бот должен быть администратором.",
@@ -103,7 +111,12 @@ TEXTS = {
         "started": "Contest started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button below!",
         "started_en": "The contest has started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button GOO 👇", "goo": "GOO 🎁",
         "subscribe": "Subscribe to these channels to continue:", "check": "✅ Check", "joined": "You joined successfully✅", "already": "You already joined!",
-        "finished": "🏁 <b>CONTEST FINISHED</b>\n\n{winners}", "no_prizes": "No prizes won yet.", "my_prizes": "🛒 Your prizes:\n",
+        "finished_uz": "🏁 <b>CONTEST FINISHED</b>\n\n{winners}",
+        "finished_en": "🏁 <b>CONTEST FINISHED</b>\n\n{winners}",
+        "won_account": "🎉 Congratulations! Your prize:\n<code>{prize}</code>\n\n✨To claim your prize,\nmessage @cpm_java 🎁",
+        "won_other": "🎉 Congratulations! Your prize:\n{prize}\n\n✨To claim your prize,\nmessage @cpm_java 🎁",
+        "no_prizes": "No prizes won yet.",
+        "my_prizes": "🛒 Your prizes:\n",
         "channels_menu": "Subscription management:", "add": "➕ Add subscription", "remove": "➖ Remove subscription", "choose_sub": "Choose type:",
         "channel": "CHANNEL📣", "group": "GROUP ✉️", "request": "JOIN REQUEST📦", "ask_channel": "Send channel username/link. Bot must be admin.",
         "ask_group": "Send group username/link. Bot must be admin.", "ask_request": "Send Join Request invite link. Bot must be admin.",
@@ -160,19 +173,14 @@ async def check_subscriptions(uid):
         kind = ch.get("type", "channel")
         chat_id = ch.get("chat_id") or ch.get("channel_id")
         if kind in ("channel", "group"):
-            if not chat_id:
-                # Old/unverifiable records fail closed instead of silently bypassing mandatory subscription.
-                return False
+            if not chat_id: return False
             try:
                 member = await bot.get_chat_member(int(chat_id), uid)
-                if member.status in ("left", "kicked", "restricted"):
-                    return False
+                if member.status in ("left", "kicked", "restricted"): return False
             except Exception:
-                log.exception("Subscription check failed for chat %s", chat_id)
                 return False
         elif kind == "request":
-            if not chat_id or not await join_requests.find_one({"user_id": uid, "chat_id": int(chat_id)}):
-                return False
+            if not chat_id or not await join_requests.find_one({"user_id": uid, "chat_id": int(chat_id)}): return False
     return True
 
 async def send_home(message, uid, lang):
@@ -232,7 +240,6 @@ async def check_sub_callback(call: CallbackQuery):
 async def change_language(message: types.Message):
     await message.answer("Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺", reply_markup=language_keyboard())
 
-# Admin contest creation
 @dp.message(F.text.in_(CREATE_BUTTONS))
 async def create_start(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID: return
@@ -357,7 +364,6 @@ def contest_post(c, current):
     en = TEXTS["en"]["started_en"].format(prizes=prize, current=current, limit=c["max_users"])
     return uz + "\n\n<blockquote><i>" + en + "</i></blockquote>"
 
-# Join / draw
 async def join_contest(uid, cid_text, message):
     lang = await get_lang(uid) or "uz"
     try: oid = ObjectId(cid_text)
@@ -365,7 +371,6 @@ async def join_contest(uid, cid_text, message):
         await message.answer("Konkurs havolasi noto'g'ri."); return
     if not await check_subscriptions(uid):
         await message.answer(TEXTS[lang]["subscribe"], reply_markup=await subscription_keyboard(lang, cid_text)); return
-    # Atomic registration prevents duplicate joins and overfilling.
     result = await contests.update_one({"_id": oid, "status": "active", "participants": {"$ne": uid}, "$expr": {"$lt": ["$current", "$max_users"]}}, {"$addToSet": {"participants": uid}, "$inc": {"current": 1}})
     if result.modified_count == 0:
         c = await contests.find_one({"_id": oid})
@@ -386,7 +391,6 @@ async def join_contest(uid, cid_text, message):
         await finish_contest(oid)
 
 async def finish_contest(oid):
-    # Claim finish exactly once, even if two joins arrive together.
     claimed = await contests.update_one({"_id": oid, "status": "active", "$expr": {"$gte": ["$current", "$max_users"]}}, {"$set": {"status": "drawing"}})
     if claimed.modified_count == 0: return
     c = await contests.find_one({"_id": oid})
@@ -403,19 +407,29 @@ async def finish_contest(oid):
         label = medals[index] if index < len(medals) else f"{index+1}-OʻRIN🏆"
         rows.append(f"{label} - {display}")
         prize = prize_lines[index]
+        u_lang = await get_lang(uid) or "uz"
+        t = TEXTS[u_lang]
         if c["kind"] == "account":
             await prizes.insert_one({"user_id": uid, "contest_id": str(oid), "account": prize, "created_at": datetime.now(timezone.utc)})
-            try: await bot.send_message(uid, f"🎉 Tabriklaymiz! Sovriningiz:\n<code>{escape(prize)}</code>", parse_mode="HTML")
-            except Exception: log.info("Could not DM winner %s", uid)
+            msg_body = t["won_account"].format(prize=escape(prize))
         else:
-            try: await bot.send_message(uid, f"🎉 Tabriklaymiz! Siz yutdingiz:\n{escape(prize)}", parse_mode="HTML")
-            except Exception: log.info("Could not DM winner %s", uid)
-    final = TEXTS["uz"]["finished"].format(winners="\n".join(rows) if rows else "Gʻolib aniqlanmadi.")
-    try: await bot.edit_message_text(chat_id=c["chat_id"], message_id=c["message_id"], text=final, parse_mode="HTML", reply_markup=None)
-    except Exception: log.exception("Could not publish winner list")
+            msg_body = t["won_other"].format(prize=prize)
+        try:
+            await bot.send_message(uid, msg_body, parse_mode="HTML")
+        except Exception:
+            log.info("Could not DM winner %s", uid)
+            
+    winners_str = "\n".join(rows) if rows else "Gʻolib aniqlanmadi."
+    uz_final = TEXTS["uz"]["finished_uz"].format(winners=winners_str)
+    en_final = TEXTS["en"]["finished_en"].format(winners=winners_str)
+    final = uz_final + "\n\n<blockquote><i>" + en_final + "</i></blockquote>"
+    
+    try:
+        await bot.edit_message_text(chat_id=c["chat_id"], message_id=c["message_id"], text=final, parse_mode="HTML", reply_markup=None)
+    except Exception:
+        log.exception("Could not publish winner list")
     await contests.update_one({"_id": oid}, {"$set": {"status": "finished", "winners": winners}})
 
-# Prizes menu
 @dp.message(F.text.in_(PRIZE_BUTTONS))
 async def show_prizes(message: types.Message):
     lang = await get_lang(message.from_user.id) or "uz"
@@ -425,7 +439,6 @@ async def show_prizes(message: types.Message):
     text = TEXTS[lang]["my_prizes"] + "\n".join(f"{i}. <code>{escape(p['account'])}</code>" for i, p in enumerate(docs, 1))
     await message.answer(text, parse_mode="HTML")
 
-# Required subscription admin menu
 @dp.message(F.text.in_(SUB_BUTTONS))
 async def sub_menu(message: types.Message):
     if message.from_user.id != ADMIN_ID: return
@@ -464,7 +477,6 @@ async def save_sub(message: types.Message, state: FSMContext):
             chat_id, title = chat.id, chat.title or raw
             url = normalize_url(raw) if raw.startswith("@") or "t.me/" in raw else f"https://t.me/{raw.lstrip('@')}"
         else:
-            # For Join Request checks, admin must provide chat ID/username plus invite link as: CHAT_ID | URL
             if "|" not in raw:
                 raise ValueError("Zayafka kanali uchun CHAT_ID | invite-link ko'rinishida yuboring.")
             left, url = [part.strip() for part in raw.split("|", 1)]
@@ -496,17 +508,15 @@ async def remove_sub(call: CallbackQuery):
 
 @dp.chat_join_request()
 async def on_join_request(update: ChatJoinRequest):
-    # Telegram delivers this update only if the bot is admin with invite-link/join-request rights.
     await join_requests.update_one({"user_id": update.from_user.id, "chat_id": update.chat.id}, {"$set": {"user_id": update.from_user.id, "chat_id": update.chat.id, "created_at": datetime.now(timezone.utc)}}, upsert=True)
 
 @dp.message(F.text.in_(STAT_BUTTONS))
 async def stats(message: types.Message):
     if message.from_user.id != ADMIN_ID: return
-    lang = await get_lang(message.from_user.id) or "uz"
+    lang = await get_lang(message.from_user.id) ro "uz"
     await message.answer(TEXTS[lang]["stats"].format(users=await users.count_documents({}), contests=await contests.count_documents({})))
 
 async def main():
-    # Render Web Service has a dynamic PORT. Flask is only a health endpoint; bot uses polling.
     threading.Thread(target=run_web, daemon=True).start()
     await mongo.admin.command("ping")
     await bot.delete_webhook(drop_pending_updates=True)
@@ -517,5 +527,5 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception:
-        log.exception("Bot stopped due to startup/runtime error")
+        log.exception("Bot stopped, restarting")
         raise
