@@ -513,7 +513,7 @@ async def on_join_request(update: ChatJoinRequest):
 @dp.message(F.text.in_(STAT_BUTTONS))
 async def stats(message: types.Message):
     if message.from_user.id != ADMIN_ID: return
-    lang = await get_lang(message.from_user.id)  "uz"
+    lang = await get_lang(message.from_user.id)
     await message.answer(TEXTS[lang]["stats"].format(users=await users.count_documents({}), contests=await contests.count_documents({})))
 
 async def main():
