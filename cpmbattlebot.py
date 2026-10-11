@@ -1,695 +1,521 @@
 import asyncio
 import logging
+import os
 import random
 import threading
-from datetime import datetime
-from bson import ObjectId
+from datetime import datetime, timezone
+from html import escape
 
+from flask import Flask
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
-    ReplyKeyboardMarkup, KeyboardButton, 
-    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery,
-    ChatJoinRequest
+    ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup,
+    InlineKeyboardButton, CallbackQuery, ChatJoinRequest
 )
-from motor.motor_asyncio import AsyncIOMotorClient
-from flask import Flask
 
-# ==========================================
-# BOT VA BAZA SOZLAMALARI
-# ==========================================
-BOT_TOKEN = "8860001735:AAFkws82v2sTzgK1TXtxv-N0MmSseiHFJhk"
-MONGO_URL = "mongodb+srv://cpmcpmbattle_db_user:lKQN2ePocUCIM9zi@cluster0.brsfu0p.mongodb.net/?appName=Cluster0" 
-DB_NAME = "konkurs_bot_db"
-ADMIN_ID = 6968399046  # Telegram ID ingiz
+# Configure these in Render -> Environment. Do not commit real secrets.
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8734592942:AAFeKV1VP5F6hCxM4cIuQZUOYvD3298yOPI")
+MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://cpmcpmbattle_db_user:lKQN2ePocUCIM9zi@cluster0.brsfu0p.mongodb.net/?appName=Cluster0")
+DB_NAME = os.getenv("DB_NAME", "konkurs_bot")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6968399046"))
+PORT = int(os.getenv("PORT", "8080"))
 
-# ==========================================
-# FLASK SERVER (24/7 Uptime)
-# ==========================================
+if BOT_TOKEN == "BOT_TOKENINGIZNI_YOZING":
+    raise RuntimeError("Set BOT_TOKEN in Render Environment Variables")
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("contest-bot")
+
 app = Flask(__name__)
+@app.get("/")
+def health():
+    return "Bot process is running", 200
 
-@app.route('/')
-def index():
-    return "Bot is running perfectly 24/7!"
+def run_web():
+    app.run(host="0.0.0.0", port=PORT, use_reloader=False)
 
-def run_flask():
-    app.run(host="0.0.0.0", port=8080)
+mongo = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=10000)
+db = mongo[DB_NAME]
+users = db.users
+contests = db.contests
+channels = db.channels
+join_requests = db.join_requests
+prizes = db.prizes
 
-# ==========================================
-# MONGODB BAZA
-# ==========================================
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
-users_col = db.users
-contests_col = db.contests
-channels_col = db.channels
-join_requests_col = db.join_requests
-prizes_col = db.prizes
-
-# ==========================================
-# AIOGRAM INIT
-# ==========================================
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# ==========================================
-# MULTI-LANGUAGE MATNLAR
-# ==========================================
 TEXTS = {
-    'uz': {
-        'choose_lang': "Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺",
-        'welcome': "Xush kelibsiz! Kerakli bo'limni tanlang:",
-        'btn_prizes': "| MEN YUTGAN SOVRINLAR 🛒|",
-        'btn_lang': "| TIL ALMASHTIRISH 🌐 |",
-        'btn_admin_create': "| KONKURS YARATISH 🛒 |",
-        'btn_admin_stat': "| BOT STATISTIKASI📊 |",
-        'btn_admin_channels': "| MAJBURIY OBUNA ULASH 📣 |",
-        'select_contest_type': "Qaysi turdagi konkurs qilasiz tanlang 🌟",
-        'btn_type_account': "👉🏻 AKKAUNTLI",
-        'btn_type_other': "👉🏻 BOSHQA",
-        'ask_custom_prizes': "Konkursga nima yutuqlar qoʻyiladi yozing🎁\n(Masalan:\n1🥇- 30K COIN\n2🥈- 500K COIN\n3🥉- CHANGE ID)",
-        'ask_winners_count': "Nechta odam gʻolib boʻladi yozing ⚡\n(Faqat son koʻrinishida)",
-        'ask_prizes_count': "Nechta akkaunt qoʻyamiz?\nYozing📦\n(Faqat son koʻrinishida)",
-        'ask_max_users': "Nechta odam qatnasha oladi yozing 🌟\n(Faqat son koʻrinishida)",
-        'ask_accounts': "Akkauntlarni quyidagi formatda yuboring🔖:\n\n<code>01 | email | parol | OK</code>\n<code>02 | email | parol | OK</code>",
-        'channel_msg_uz': "Konkurs boshlandi 📣\n\nYutuqlar🎁:\n{prizes_text}\nTugashi: {current}/{max_users}\n\nQatnashish uchun pastdagi tugmani bosing!",
-        'channel_msg_en': "The contest has started📣\n\nPrizes 🎁:\n{prizes_text}\nEnds: {current}/{max_users}\n\nClick the button GOO 👇",
-        'btn_channel_join': "GOO 🎁",
-        'must_subscribe': "Botdan foydalanish uchun quyidagi kanallarga a'zo bo'ling:",
-        'already_joined': "Siz allaqachon ushbu konkursda qatnashmoqdasiz!",
-        'joined_success': "Siz muvaffaqiyatli qatnashdingiz✅",
-        'no_prizes': "Sizda hali yutib olingan sovrinlar yo'q 🛒",
-        'your_prizes': "🛒 Siz yutgan sovrinlar:\n\n",
-        'contest_finished_channel': "🏁 <b>KOʻNKURS YAKUNLANDI</b>\n\n{winners_text}",
-        'won_notify': "🎉 TASHAKKURLAR! Siz konkursda g'olib bo'ldingiz!\n\nSizning sovriningiz:\n<code>{account}</code>",
-        'invalid_number': "Xatolik! Iltimos, faqat musbat son kiriting.",
-        'accounts_mismatch': "Akkauntlar soni {prizes_count} tadan kam. Qaytadan yuboring:",
-        'channels_menu': "Majburiy obuna boshqaruvi:",
-        'btn_add_channel': "➕ Kanal qo'shish",
-        'btn_del_channel': "➖ Olib tashlash",
-        'select_ch_type': "Turini tanlang:",
-        'type_channel': "ODDIY KANAL📣",
-        'type_group': "CHAT GURUH ✉️",
-        'type_request': "ZAYAFKA KANAL📦",
-        'channel_added': "✅ Qo'shildi!",
-        'channel_deleted': "🗑 Olib tashlandi!",
-        'check_sub_btn': "✅ Tekshirish",
-        'no_channels_to_del': "Hali obuna qo'shilmagan."
+    "uz": {
+        "choose": "Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺", "welcome": "Xush kelibsiz! Kerakli bo'limni tanlang:",
+        "prizes_btn": "| MEN YUTGAN SOVRINLAR 🛒|", "lang_btn": "| TIL ALMASHTIRISH 🌐 |",
+        "create_btn": "| KONKURS YARATISH 🛒 |", "stats_btn": "| BOT STATISTIKASI📊 |",
+        "subs_btn": "| MAJBURIY OBUNA ULASH 📣 |", "select_type": "Qaysi turdagi konkurs qilasiz tanlang 🌟",
+        "account": "👉🏻 AKKAUNTLI", "other": "👉🏻 BOSHQA",
+        "ask_prizes": "Nechta akkaunt qoʻyamiz? (Faqat son)", "ask_accounts": "Akkauntlarni har birini yangi qatordan yuboring:\n<code>01 | email | parol | OK</code>",
+        "ask_custom": "Konkursga nima yutuqlar qoʻyiladi yozing🎁\nMasalan:\n1🥇- 30K COIN\n2🥈- 500K COIN\n3🥉- CHANGE ID",
+        "ask_winners": "Nechta odam gʻolib boʻladi yozing ⚡ (Faqat son)", "ask_limit": "Nechta odam qatnasha oladi yozing 🌟 (Faqat son)",
+        "pick_channel": "Konkurs qilinadigan kanalni tanlang:", "started": "Konkurs boshlandi 📣\n\nYutuqlar🎁: {prizes}\nTugashi: {current}/{limit}\n\nQatnashish uchun pastdagi tugmani bosing!",
+        "started_en": "The contest has started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button GOO 👇",
+        "goo": "GOO 🎁", "subscribe": "Davom etish uchun quyidagi kanallarga a'zo bo'ling:",
+        "check": "✅ Tekshirish", "joined": "Siz muvaffaqiyatli qatnashdingiz✅", "already": "Siz allaqachon qatnashyapsiz!",
+        "finished": "🏁 <b>KOʻNKURS YAKUNLANDI</b>\n\n{winners}", "no_prizes": "Siz hali sovrin yutmadingiz.",
+        "my_prizes": "🛒 Siz yutgan sovrinlar:\n", "channels_menu": "Majburiy obuna boshqaruvi:",
+        "add": "➕ Majburiy obuna qoʻshish", "remove": "➖ Majburiy obunani olib tashlash",
+        "choose_sub": "Turini tanlang:", "channel": "ODDIY KANAL📣", "group": "CHAT GURUH ✉️", "request": "ZAYAFKA KANAL📦",
+        "ask_channel": "Kanal username yoki linkini yuboring (masalan @kanal yoki https://t.me/kanal). Bot admin bo'lishi kerak.",
+        "ask_group": "Guruh username yoki linkini yuboring. Bot guruhda admin bo'lishi kerak.",
+        "ask_request": "Join Request kanal linkini yuboring. Bot kanalda admin bo'lishi kerak.",
+        "added": "✅ Obuna qoʻshildi", "removed": "🗑 Obuna olib tashlandi", "none": "Obunalar topilmadi.",
+        "bad_number": "Faqat musbat son yuboring.", "count_mismatch": "{n} ta akkaunt yuboring.",
+        "stats": "📊 Foydalanuvchilar: {users}\nKonkurslar: {contests}"
     },
-    'ru': {
-        'choose_lang': "Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺",
-        'welcome': "Выберите раздел:",
-        'btn_prizes': "| МОИ ПРИЗЫ 🛒|",
-        'btn_lang': "| СМЕНА ЯЗЫКА 🌐 |",
-        'btn_admin_create': "| СОЗДАТЬ КОНКУРС 🛒 |",
-        'btn_admin_stat': "| СТАТИСТИКА 📊 |",
-        'btn_admin_channels': "| ПОДПИСКИ 📣 |",
-        'select_contest_type': "Выберите тип конкурса 🌟",
-        'btn_type_account': "👉🏻 АККАУНТЫ",
-        'btn_type_other': "👉🏻 ДРУГОЕ",
-        'ask_custom_prizes': "Напишите призы для конкурса🎁:",
-        'ask_winners_count': "Сколько будет победителей ⚡:",
-        'ask_prizes_count': "Сколько аккаунтов?",
-        'ask_max_users': "Сколько участников?",
-        'ask_accounts': "Отправьте аккаунты:",
-        'channel_msg_uz': "Конкурс начался 📣",
-        'channel_msg_en': "Contest started",
-        'btn_channel_join': "GOO 🎁",
-        'must_subscribe': "Подпишитесь на каналы:",
-        'already_joined': "Вы уже участвуете!",
-        'joined_success': "Успешно ✅",
-        'no_prizes': "Нет призов 🛒",
-        'your_prizes': "🛒 Ваши призы:\n\n",
-        'contest_finished_channel': "🏁 <b>КОНКУРС ЗАВЕРШЕН</b>\n\n{winners_text}",
-        'won_notify': "🎉 Ваш приз:\n<code>{account}</code>",
-        'invalid_number': "Введите число.",
-        'accounts_mismatch': "Мало аккаунтов:",
-        'channels_menu': "Управление подписками:",
-        'btn_add_channel': "➕ Добавить",
-        'btn_del_channel': "➖ Удалить",
-        'select_ch_type': "Тип:",
-        'type_channel': "КАНАЛ📣",
-        'type_group': "ГРУППА ✉️",
-        'type_request': "ЗАЯВКА📦",
-        'channel_added': "✅ Добавлено!",
-        'channel_deleted': "🗑 Удалено!",
-        'check_sub_btn': "✅ Проверить",
-        'no_channels_to_del': "Список пуст."
+    "ru": {
+        "choose": "Выберите язык 🇺🇿 / 🇺🇸 / 🇷🇺", "welcome": "Добро пожаловать! Выберите раздел:",
+        "prizes_btn": "| МОИ ПРИЗЫ 🛒|", "lang_btn": "| СМЕНА ЯЗЫКА 🌐 |", "create_btn": "| СОЗДАТЬ КОНКУРС 🛒 |",
+        "stats_btn": "| СТАТИСТИКА 📊 |", "subs_btn": "| ОБЯЗАТЕЛЬНАЯ ПОДПИСКА 📣 |", "select_type": "Выберите тип конкурса 🌟",
+        "account": "👉🏻 АККАУНТЫ", "other": "👉🏻 ДРУГОЕ", "ask_prizes": "Сколько аккаунтов разыгрываем? (Число)",
+        "ask_accounts": "Отправьте аккаунты по одному в строке:\n<code>01 | email | пароль | OK</code>", "ask_custom": "Напишите призы конкурса🎁",
+        "ask_winners": "Сколько будет победителей? (Число)", "ask_limit": "Сколько участников может быть? (Число)",
+        "pick_channel": "Выберите канал для конкурса:", "started": "Конкурс начался 📣\n\nПризы🎁: {prizes}\nЗавершение: {current}/{limit}\n\nНажмите кнопку ниже!",
+        "started_en": "The contest has started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button GOO 👇", "goo": "GOO 🎁",
+        "subscribe": "Подпишитесь на каналы, чтобы продолжить:", "check": "✅ Проверить", "joined": "Вы успешно участвуете✅",
+        "already": "Вы уже участвуете!", "finished": "🏁 <b>КОНКУРС ЗАВЕРШЕН</b>\n\n{winners}", "no_prizes": "Вы пока не выиграли.",
+        "my_prizes": "🛒 Ваши призы:\n", "channels_menu": "Управление подписками:", "add": "➕ Добавить подписку",
+        "remove": "➖ Удалить подписку", "choose_sub": "Выберите тип:", "channel": "КАНАЛ📣", "group": "ГРУППА ✉️", "request": "ЗАЯВКА📦",
+        "ask_channel": "Отправьте username или ссылку канала. Бот должен быть администратором.", "ask_group": "Отправьте username или ссылку группы. Бот должен быть администратором.",
+        "ask_request": "Отправьте ссылку Join Request. Бот должен быть администратором.", "added": "✅ Добавлено", "removed": "🗑 Удалено", "none": "Подписок нет.",
+        "bad_number": "Введите положительное число.", "count_mismatch": "Отправьте {n} аккаунтов.", "stats": "📊 Пользователи: {users}\nКонкурсы: {contests}"
     },
-    'en': {
-        'choose_lang': "Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺",
-        'welcome': "Select option:",
-        'btn_prizes': "| MY PRIZES 🛒|",
-        'btn_lang': "| CHANGE LANGUAGE 🌐 |",
-        'btn_admin_create': "| CREATE CONTEST 🛒 |",
-        'btn_admin_stat': "| STATS 📊 |",
-        'btn_admin_channels': "| SUBSCRIPTIONS 📣 |",
-        'select_contest_type': "Select contest type 🌟",
-        'btn_type_account': "👉🏻 ACCOUNTS",
-        'btn_type_other': "👉🏻 OTHER",
-        'ask_custom_prizes': "Write custom prizes🎁:",
-        'ask_winners_count': "How many winners ⚡:",
-        'ask_prizes_count': "How many accounts?",
-        'ask_max_users': "How many participants?",
-        'ask_accounts': "Send accounts:",
-        'channel_msg_uz': "Contest started",
-        'channel_msg_en': "Contest started",
-        'btn_channel_join': "GOO 🎁",
-        'must_subscribe': "Subscribe:",
-        'already_joined': "Already joined!",
-        'joined_success': "Success ✅",
-        'no_prizes': "No prizes 🛒",
-        'your_prizes': "🛒 Prizes:\n\n",
-        'contest_finished_channel': "🏁 <b>FINISHED</b>\n\n{winners_text}",
-        'won_notify': "🎉 Prize:\n<code>{account}</code>",
-        'invalid_number': "Send number.",
-        'accounts_mismatch': "Not enough:",
-        'channels_menu': "Manage:",
-        'btn_add_channel': "➕ Add",
-        'btn_del_channel': "➖ Remove",
-        'select_ch_type': "Type:",
-        'type_channel': "CHANNEL",
-        'type_group': "GROUP",
-        'type_request': "REQUEST",
-        'channel_added': "✅ Added!",
-        'channel_deleted': "🗑 Removed!",
-        'check_sub_btn': "✅ Check",
-        'no_channels_to_del': "No channels."
+    "en": {
+        "choose": "Choose a language 🇺🇿 / 🇺🇸 / 🇷🇺", "welcome": "Welcome! Choose an option:",
+        "prizes_btn": "| MY PRIZES 🛒|", "lang_btn": "| CHANGE LANGUAGE 🌐 |", "create_btn": "| CREATE CONTEST 🛒 |",
+        "stats_btn": "| BOT STATS 📊 |", "subs_btn": "| MANDATORY SUBS 📣 |", "select_type": "Select contest type 🌟",
+        "account": "👉🏻 ACCOUNTS", "other": "👉🏻 OTHER", "ask_prizes": "How many accounts? (Number)",
+        "ask_accounts": "Send one account per line:\n<code>01 | email | password | OK</code>", "ask_custom": "Write the contest prizes 🎁",
+        "ask_winners": "How many winners? (Number)", "ask_limit": "Maximum participants? (Number)", "pick_channel": "Choose contest channel:",
+        "started": "Contest started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button below!",
+        "started_en": "The contest has started 📣\n\nPrizes 🎁: {prizes}\nEnds: {current}/{limit}\n\nClick the button GOO 👇", "goo": "GOO 🎁",
+        "subscribe": "Subscribe to these channels to continue:", "check": "✅ Check", "joined": "You joined successfully✅", "already": "You already joined!",
+        "finished": "🏁 <b>CONTEST FINISHED</b>\n\n{winners}", "no_prizes": "No prizes won yet.", "my_prizes": "🛒 Your prizes:\n",
+        "channels_menu": "Subscription management:", "add": "➕ Add subscription", "remove": "➖ Remove subscription", "choose_sub": "Choose type:",
+        "channel": "CHANNEL📣", "group": "GROUP ✉️", "request": "JOIN REQUEST📦", "ask_channel": "Send channel username/link. Bot must be admin.",
+        "ask_group": "Send group username/link. Bot must be admin.", "ask_request": "Send Join Request invite link. Bot must be admin.",
+        "added": "✅ Added", "removed": "🗑 Removed", "none": "No subscriptions.", "bad_number": "Enter a positive number.",
+        "count_mismatch": "Send {n} accounts.", "stats": "📊 Users: {users}\nContests: {contests}"
     }
 }
 
-ALL_PRIZES_BTNS = [t['btn_prizes'] for t in TEXTS.values()]
-ALL_LANG_BTNS = [t['btn_lang'] for t in TEXTS.values()]
-ALL_ADMIN_CREATE_BTNS = [t['btn_admin_create'] for t in TEXTS.values()]
-ALL_ADMIN_STAT_BTNS = [t['btn_admin_stat'] for t in TEXTS.values()]
-ALL_ADMIN_CHANNELS_BTNS = [t['btn_admin_channels'] for t in TEXTS.values()]
+class ContestFlow(StatesGroup):
+    kind = State(); custom_prizes = State(); winners = State(); account_count = State(); limit = State(); accounts = State(); channel = State()
+class SubFlow(StatesGroup):
+    link = State()
 
-# ==========================================
-# FSM STATES
-# ==========================================
-class AdminCreateContest(StatesGroup):
-    waiting_contest_type = State()
-    waiting_custom_prizes = State()
-    waiting_winners_count = State()
-    waiting_prizes_count = State()
-    waiting_max_users = State()
-    waiting_accounts = State()
-    waiting_target_channel = State()
+LANG_BUTTONS = [t["lang_btn"] for t in TEXTS.values()]
+PRIZE_BUTTONS = [t["prizes_btn"] for t in TEXTS.values()]
+CREATE_BUTTONS = [t["create_btn"] for t in TEXTS.values()]
+STAT_BUTTONS = [t["stats_btn"] for t in TEXTS.values()]
+SUB_BUTTONS = [t["subs_btn"] for t in TEXTS.values()]
 
-class ChannelManageStates(StatesGroup):
-    waiting_link = State()
+async def get_lang(uid):
+    doc = await users.find_one({"user_id": uid})
+    lang = doc.get("lang") if doc else None
+    return lang if lang in TEXTS else None
 
-# ==========================================
-# YORDAMCHI FUNKSIYALAR
-# ==========================================
-async def get_user_lang(user_id: int):
-    user = await users_col.find_one({"user_id": user_id})
-    return user.get('lang') if user else None
-
-def get_main_keyboard(user_id: int, lang: str):
+def main_keyboard(uid, lang):
     t = TEXTS[lang]
-    buttons = [[KeyboardButton(text=t['btn_prizes'])], [KeyboardButton(text=t['btn_lang'])]]
-    if user_id == ADMIN_ID:
-        buttons.append([KeyboardButton(text=t['btn_admin_create'])])
-        buttons.append([KeyboardButton(text=t['btn_admin_stat']), KeyboardButton(text=t['btn_admin_channels'])])
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    rows = [[KeyboardButton(text=t["prizes_btn"])], [KeyboardButton(text=t["lang_btn"])]]
+    if uid == ADMIN_ID:
+        rows += [[KeyboardButton(text=t["create_btn"])], [KeyboardButton(text=t["stats_btn"]), KeyboardButton(text=t["subs_btn"])]]
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 def language_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="choose_lang_uz"),
-         InlineKeyboardButton(text="🇺🇸 English", callback_data="choose_lang_en"),
-         InlineKeyboardButton(text="🇷🇺 Русский", callback_data="choose_lang_ru")]
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"), InlineKeyboardButton(text="🇺🇸 English", callback_data="lang_en"), InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru")]])
 
-def fix_url(url_str: str) -> str:
-    if not url_str: return "https://t.me"
-    url_str = url_str.strip()
-    if url_str.startswith(("http://", "https://")): return url_str
-    if url_str.startswith("@"): return f"https://t.me/{url_str[1:]}"
-    return f"https://t.me/{url_str}"
+def normalize_url(value):
+    value = (value or "").strip()
+    if value.startswith(("https://", "http://")): return value
+    if value.startswith("@"): return "https://t.me/" + value[1:]
+    if value.startswith("t.me/"): return "https://" + value
+    return "https://t.me/" + value
 
-async def check_user_subscriptions(user_id: int) -> bool:
-    channels = await channels_col.find().to_list(length=100)
-    if not channels: return True
-    for ch in channels:
-        ch_type, chat_id = ch.get('type', 'channel'), ch.get('chat_id')
-        if ch_type in ['channel', 'group'] and chat_id:
+async def subscription_keyboard(lang, contest_id=None):
+    docs = await channels.find().to_list(100)
+    rows = []
+    for ch in docs:
+        if ch.get("url"):
+            rows.append([InlineKeyboardButton(text="📣 " + ch.get("title", "Channel"), url=normalize_url(ch["url"]))])
+    cb = "checksub:" + (contest_id or "home")
+    rows.append([InlineKeyboardButton(text=TEXTS[lang]["check"], callback_data=cb)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+async def check_subscriptions(uid):
+    for ch in await channels.find().to_list(200):
+        kind = ch.get("type", "channel")
+        chat_id = ch.get("chat_id") or ch.get("channel_id")
+        if kind in ("channel", "group"):
+            if not chat_id:
+                # Old/unverifiable records fail closed instead of silently bypassing mandatory subscription.
+                return False
             try:
-                m = await bot.get_chat_member(chat_id=int(chat_id), user_id=user_id)
-                if m.status in ['left', 'kicked']: return False
-            except: pass
-        elif ch_type == 'request':
-            if not await join_requests_col.find_one({"user_id": user_id, "chat_id": chat_id}): return False
+                member = await bot.get_chat_member(int(chat_id), uid)
+                if member.status in ("left", "kicked", "restricted"):
+                    return False
+            except Exception:
+                log.exception("Subscription check failed for chat %s", chat_id)
+                return False
+        elif kind == "request":
+            if not chat_id or not await join_requests.find_one({"user_id": uid, "chat_id": int(chat_id)}):
+                return False
     return True
 
-async def get_required_channels_keyboard(lang: str, contest_id: str = None):
-    channels = await channels_col.find().to_list(length=100)
-    buttons = [[InlineKeyboardButton(text=f"📣 {ch.get('title')}", url=fix_url(ch.get('url')))] for ch in channels if ch.get('url')]
-    cb = f"check_contest_sub_{contest_id}" if contest_id else "check_main_sub"
-    buttons.append([InlineKeyboardButton(text=TEXTS[lang]["check_sub_btn"], callback_data=cb)])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+async def send_home(message, uid, lang):
+    await message.answer(TEXTS[lang]["welcome"], reply_markup=main_keyboard(uid, lang))
 
-# ==========================================
-# CHAT JOIN REQUEST LISTENER
-# ==========================================
-@dp.chat_join_request()
-async def handle_join_request(update: ChatJoinRequest):
-    await join_requests_col.update_one(
-        {"user_id": update.from_user.id, "chat_id": update.chat.id},
-        {"$set": {"user_id": update.from_user.id, "chat_id": update.chat.id, "date": datetime.now()}},
-        upsert=True
-    )
-
-# ==========================================
-# START VA TIL TANLASH
-# ==========================================
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message):
-    user_id = message.from_user.id
-    args = message.text.split()
-    contest_id = args[1].replace("contest_", "") if len(args) > 1 and args[1].startswith("contest_") else None
-    lang = await get_user_lang(user_id)
-
+async def start(message: types.Message):
+    uid = message.from_user.id
+    args = (message.text or "").split(maxsplit=1)
+    contest_id = args[1][8:] if len(args) > 1 and args[1].startswith("contest_") else None
+    await users.update_one({"user_id": uid}, {"$set": {"username": message.from_user.username, "first_name": message.from_user.first_name, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
+    lang = await get_lang(uid)
     if not lang:
-        await users_col.update_one(
-            {"user_id": user_id},
-            {"$set": {"pending_contest_id": contest_id, "username": message.from_user.username, "first_name": message.from_user.first_name}},
-            upsert=True
-        )
-        await message.answer(TEXTS['uz']['choose_lang'], reply_markup=language_keyboard())
+        await users.update_one({"user_id": uid}, {"$set": {"pending_contest_id": contest_id}}, upsert=True)
+        await message.answer(TEXTS["uz"]["choose"], reply_markup=language_keyboard())
         return
-
-    if not await check_user_subscriptions(user_id):
-        keyboard = await get_required_channels_keyboard(lang=lang, contest_id=contest_id)
-        await message.answer(TEXTS[lang]['must_subscribe'], reply_markup=keyboard)
+    if not await check_subscriptions(uid):
+        await message.answer(TEXTS[lang]["subscribe"], reply_markup=await subscription_keyboard(lang, contest_id))
         return
-
     if contest_id:
-        await process_join_contest(user_id, contest_id, message)
-        return
-
-    await message.answer(TEXTS[lang]['welcome'], reply_markup=get_main_keyboard(user_id, lang))
-
-@dp.callback_query(F.data.startswith("choose_lang_"))
-async def choose_lang_callback(call: CallbackQuery):
-    new_lang = call.data.split("_")[-1]
-    user = await users_col.find_one({"user_id": call.from_user.id})
-    pending_id = user.get("pending_contest_id") if user else None
-    
-    await users_col.update_one(
-        {"user_id": call.from_user.id},
-        {"$set": {"lang": new_lang, "updated_at": datetime.now()}, "$unset": {"pending_contest_id": ""}},
-        upsert=True
-    )
-    
-    await call.message.delete()
-    
-    if not await check_user_subscriptions(call.from_user.id):
-        keyboard = await get_required_channels_keyboard(lang=new_lang, contest_id=pending_id)
-        await call.message.answer(TEXTS[new_lang]['must_subscribe'], reply_markup=keyboard)
-        return
-
-    if pending_id:
-        await process_join_contest(call.from_user.id, pending_id, call.message)
-        return
-
-    await call.message.answer(TEXTS[new_lang]['welcome'], reply_markup=get_main_keyboard(call.from_user.id, new_lang))
-
-@dp.callback_query(F.data == "check_main_sub")
-async def check_main_sub(call: CallbackQuery):
-    if not await check_user_subscriptions(call.from_user.id):
-        await call.answer("Barcha kanallarga a'zo bo'ling! ❌", show_alert=True)
-        return
-    lang = await get_user_lang(call.from_user.id) or 'uz'
-    await call.message.delete()
-    await call.message.answer(TEXTS[lang]['welcome'], reply_markup=get_main_keyboard(call.from_user.id, lang))
-
-@dp.callback_query(F.data.startswith("check_contest_sub_"))
-async def check_contest_sub(call: CallbackQuery):
-    if not await check_user_subscriptions(call.from_user.id):
-        await call.answer("Barcha kanallarga a'zo bo'ling! ❌", show_alert=True)
-        return
-    cid = call.data.replace("check_contest_sub_", "")
-    await call.message.delete()
-    await process_join_contest(call.from_user.id, cid, call.message)
-
-# ==========================================
-# MENYU TUGMALARI
-# ==========================================
-@dp.message(F.text.in_(ALL_LANG_BTNS) | F.text.contains("TIL ALMASHTIRISH") | F.text.contains("СМЕНА ЯЗЫКА") | F.text.contains("CHANGE LANGUAGE"))
-async def process_change_lang(message: types.Message):
-    await message.answer("Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺:", reply_markup=language_keyboard())
-
-@dp.message(F.text.in_(ALL_PRIZES_BTNS) | F.text.contains("YUTGAN SOVRINLAR") | F.text.contains("МОИ ПРИЗЫ") | F.text.contains("MY PRIZES"))
-async def show_prizes(message: types.Message):
-    user_id = message.from_user.id
-    lang = await get_user_lang(user_id) or 'uz'
-    t = TEXTS[lang]
-    prizes = await prizes_col.find({"user_id": user_id}).to_list(length=100)
-    
-    if not prizes:
-        await message.answer(t['no_prizes'])
+        await join_contest(uid, contest_id, message)
     else:
-        text = t['your_prizes']
-        for idx, p in enumerate(prizes, 1):
-            text += f"{idx}. <code>{p['account']}</code>\n"
-        await message.answer(text, parse_mode="HTML")
+        await send_home(message, uid, lang)
 
-@dp.message(F.text.in_(ALL_ADMIN_CHANNELS_BTNS) | F.text.contains("MAJBURIY OBUNA") | F.text.contains("ОБЯЗАТЕЛЬНАЯ ПОДПИСКА") | F.text.contains("MANDATORY SUBS"))
-async def admin_channels_menu(message: types.Message):
-    if message.from_user.id != ADMIN_ID: return
-    lang = await get_user_lang(message.from_user.id) or 'uz'
-    t = TEXTS[lang]
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t['btn_add_channel'], callback_data="sub_add_menu")],
-        [InlineKeyboardButton(text=t['btn_del_channel'], callback_data="sub_del_menu")]
-    ])
-    await message.answer(t['channels_menu'], reply_markup=kb)
-
-@dp.message(F.text.in_(ALL_ADMIN_STAT_BTNS) | F.text.contains("STATISTIKASI") | F.text.contains("СТАТИСТИКА") | F.text.contains("STATS"))
-async def show_stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID: return
-    u, c = await users_col.count_documents({}), await contests_col.count_documents({})
-    await message.answer(f"📊 <b>Bot Statistikasi:</b>\n\n👤 Jami foydalanuvchilar: {u}\n🛒 O'tkazilgan konkurslar: {c}", parse_mode="HTML")
-
-# ==========================================
-# ADMIN: MAJBURIY OBUNA BOSHQARUVI
-# ==========================================
-@dp.callback_query(F.data == "sub_add_menu")
-async def choose_sub_type(call: CallbackQuery):
-    lang = await get_user_lang(call.from_user.id) or 'uz'
-    t = TEXTS[lang]
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t['type_channel'], callback_data="add_type_channel")],
-        [InlineKeyboardButton(text=t['type_group'], callback_data="add_type_group")],
-        [InlineKeyboardButton(text=t['type_request'], callback_data="add_type_request")]
-    ])
-    await call.message.edit_text(t['select_ch_type'], reply_markup=kb)
-
-@dp.callback_query(F.data.startswith("add_type_"))
-async def prompt_channel_link(call: CallbackQuery, state: FSMContext):
-    ch_type = call.data.replace("add_type_", "")
-    lang = await get_user_lang(call.from_user.id) or 'uz'
-    t = TEXTS[lang]
-    await state.update_data(ch_type=ch_type)
-    if ch_type == 'channel': await call.message.edit_text(t['ask_channel_link'], parse_mode="HTML")
-    elif ch_type == 'group': await call.message.edit_text(t['ask_group_link'], parse_mode="HTML")
-    else: await call.message.edit_text(t['ask_request_link'], parse_mode="HTML")
-    await state.set_state(ChannelManageStates.waiting_link)
-
-@dp.message(ChannelManageStates.waiting_link)
-async def process_save_channel(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    ch_type = data['ch_type']
-    lang = await get_user_lang(message.from_user.id) or 'uz'
-    t = TEXTS[lang]
-    input_val = message.text.strip()
-    try:
-        if ch_type in ['channel', 'group']:
-            chat_identifier = input_val.replace("https://t.me/", "@") if "t.me/" in input_val and not "+" in input_val else input_val
-            chat = await bot.get_chat(chat_identifier)
-            chat_id = chat.id
-            title = chat.title
-            link = fix_url(f"https://t.me/{chat.username}" if chat.username else input_val)
-        else:
-            link = fix_url(input_val)
-            title = f"Zayafka Kanal ({input_val})"
-            chat_id = None
-            
-        await channels_col.insert_one({"type": ch_type, "chat_id": chat_id, "channel_id": chat_id, "title": title, "url": link, "created_at": datetime.now()})
-        await message.answer(t['channel_added'])
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}\nBot admin ekanligiga ishonch hosil qiling!")
-    await state.clear()
-
-@dp.callback_query(F.data == "sub_del_menu")
-async def show_del_channels(call: CallbackQuery):
-    channels = await channels_col.find().to_list(length=100)
-    if not channels:
-        await call.message.edit_text("Hali obuna qo'shilmagan.")
-        return
-    buttons = [[InlineKeyboardButton(text=f"🗑 {ch.get('title', 'Kanal')}", callback_data=f"del_ch_{ch['_id']}")] for ch in channels]
-    await call.message.edit_text("Olib tashlash uchun tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
-
-@dp.callback_query(F.data.startswith("del_ch_"))
-async def confirm_del_channel(call: CallbackQuery):
-    await channels_col.delete_one({"_id": ObjectId(call.data.replace("del_ch_", ""))})
-    await call.message.edit_text("🗑 Olib tashlandi!")
-
-# ==========================================
-# ADMIN: KONKURS YARATISH (BOSHQA VA AKKAUNTLI - FORMAT BILAN)
-# ==========================================
-@dp.message(F.text.in_(ALL_ADMIN_CREATE_BTNS) | F.text.contains("KONKURS YARATISH") | F.text.contains("СОЗДАТЬ КОНКУРС") | F.text.contains("CREATE CONTEST"))
-async def admin_create_start(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID: return
-    lang = await get_user_lang(message.from_user.id) or 'uz'
-    t = TEXTS[lang]
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t['btn_type_account'], callback_data="ctype_account")],
-        [InlineKeyboardButton(text=t['btn_type_other'], callback_data="ctype_other")]
-    ])
-    await message.answer(t['select_contest_type'], reply_markup=kb)
-    await state.set_state(AdminCreateContest.waiting_contest_type)
-
-@dp.callback_query(F.data.startswith("ctype_"), AdminCreateContest.waiting_contest_type)
-async def process_contest_type(call: CallbackQuery, state: FSMContext):
-    ctype = call.data.replace("ctype_", "")
-    await state.update_data(ctype=ctype)
-    lang = await get_user_lang(call.from_user.id) or 'uz'
-    t = TEXTS[lang]
-
-    if ctype == 'other':
-        await call.message.edit_text(t['ask_custom_prizes'])
-        await state.set_state(AdminCreateContest.waiting_custom_prizes)
+@dp.callback_query(F.data.startswith("lang_"))
+async def set_language(call: CallbackQuery):
+    lang = call.data[5:]
+    if lang not in TEXTS:
+        await call.answer("Invalid language", show_alert=True); return
+    old = await users.find_one({"user_id": call.from_user.id})
+    pending = old.get("pending_contest_id") if old else None
+    await users.update_one({"user_id": call.from_user.id}, {"$set": {"lang": lang, "updated_at": datetime.now(timezone.utc)}, "$unset": {"pending_contest_id": ""}}, upsert=True)
+    await call.answer()
+    try: await call.message.delete()
+    except Exception: pass
+    if not await check_subscriptions(call.from_user.id):
+        await call.message.answer(TEXTS[lang]["subscribe"], reply_markup=await subscription_keyboard(lang, pending))
+    elif pending:
+        await join_contest(call.from_user.id, pending, call.message)
     else:
-        await call.message.edit_text(t['ask_prizes_count'])
-        await state.set_state(AdminCreateContest.waiting_prizes_count)
+        await send_home(call.message, call.from_user.id, lang)
 
-@dp.message(AdminCreateContest.waiting_custom_prizes)
-async def process_custom_prizes(message: types.Message, state: FSMContext):
-    await state.update_data(custom_prizes=message.text.strip())
-    lang = await get_user_lang(message.from_user.id) or 'uz'
-    await message.answer(TEXTS[lang]['ask_winners_count'])
-    await state.set_state(AdminCreateContest.waiting_winners_count)
+@dp.callback_query(F.data.startswith("checksub:"))
+async def check_sub_callback(call: CallbackQuery):
+    lang = await get_lang(call.from_user.id) or "uz"
+    if not await check_subscriptions(call.from_user.id):
+        await call.answer("Avval barcha kanallarga obuna bo'ling / Subscribe first", show_alert=True); return
+    payload = call.data.split(":", 1)[1]
+    try: await call.message.delete()
+    except Exception: pass
+    if payload != "home":
+        await join_contest(call.from_user.id, payload, call.message)
+    else:
+        await send_home(call.message, call.from_user.id, lang)
 
-@dp.message(AdminCreateContest.waiting_winners_count)
-async def process_winners_count(message: types.Message, state: FSMContext):
-    if not message.text.isdigit(): return
-    await state.update_data(winners_count=int(message.text), p_count=int(message.text))
-    lang = await get_user_lang(message.from_user.id) or 'uz'
-    await message.answer(TEXTS[lang]['ask_max_users'])
-    await state.set_state(AdminCreateContest.waiting_max_users)
+@dp.message(F.text.in_(LANG_BUTTONS))
+async def change_language(message: types.Message):
+    await message.answer("Tilni tanlang 🇺🇿 / 🇺🇸 / 🇷🇺", reply_markup=language_keyboard())
 
-@dp.message(AdminCreateContest.waiting_prizes_count)
-async def process_prizes_count(message: types.Message, state: FSMContext):
-    if not message.text.isdigit(): return
-    await state.update_data(p_count=int(message.text), winners_count=int(message.text))
-    lang = await get_user_lang(message.from_user.id) or 'uz'
-    await message.answer(TEXTS[lang]['ask_max_users'])
-    await state.set_state(AdminCreateContest.waiting_max_users)
+# Admin contest creation
+@dp.message(F.text.in_(CREATE_BUTTONS))
+async def create_start(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID: return
+    lang = await get_lang(message.from_user.id) or "uz"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=TEXTS[lang]["account"], callback_data="kind:account")], [InlineKeyboardButton(text=TEXTS[lang]["other"], callback_data="kind:other")]])
+    await message.answer(TEXTS[lang]["select_type"], reply_markup=kb)
+    await state.set_state(ContestFlow.kind)
 
-@dp.message(AdminCreateContest.waiting_max_users)
-async def process_max_users(message: types.Message, state: FSMContext):
-    if not message.text.isdigit(): return
+@dp.callback_query(F.data.startswith("kind:"), ContestFlow.kind)
+async def choose_kind(call: CallbackQuery, state: FSMContext):
+    kind = call.data.split(":", 1)[1]
+    await state.update_data(kind=kind, admin_lang=await get_lang(call.from_user.id) or "uz")
+    t = TEXTS[(await get_lang(call.from_user.id)) or "uz"]
+    if kind == "account":
+        await call.message.edit_text(t["ask_prizes"]); await state.set_state(ContestFlow.account_count)
+    else:
+        await call.message.edit_text(t["ask_custom"]); await state.set_state(ContestFlow.custom_prizes)
+    await call.answer()
+
+@dp.message(ContestFlow.custom_prizes)
+async def custom_prizes(message: types.Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Yutuq matnini yuboring."); return
+    winners = [line.strip() for line in text.splitlines() if line.strip()]
+    await state.update_data(custom_prizes=text, prize_lines=winners)
+    t = TEXTS[await get_lang(message.from_user.id) or "uz"]
+    await message.answer(t["ask_winners"]); await state.set_state(ContestFlow.winners)
+
+@dp.message(ContestFlow.winners)
+async def winners_count(message: types.Message, state: FSMContext):
+    if not (message.text or "").isdigit() or int(message.text) < 1:
+        await message.answer(TEXTS[await get_lang(message.from_user.id) or "uz"]["bad_number"]); return
+    await state.update_data(winners_count=int(message.text), prize_count=int(message.text))
+    t = TEXTS[await get_lang(message.from_user.id) or "uz"]
+    await message.answer(t["ask_limit"]); await state.set_state(ContestFlow.limit)
+
+@dp.message(ContestFlow.account_count)
+async def account_count(message: types.Message, state: FSMContext):
+    if not (message.text or "").isdigit() or int(message.text) < 1:
+        await message.answer(TEXTS[await get_lang(message.from_user.id) or "uz"]["bad_number"]); return
+    await state.update_data(prize_count=int(message.text), winners_count=int(message.text))
+    t = TEXTS[await get_lang(message.from_user.id) or "uz"]
+    await message.answer(t["ask_limit"]); await state.set_state(ContestFlow.limit)
+
+@dp.message(ContestFlow.limit)
+async def participant_limit(message: types.Message, state: FSMContext):
+    if not (message.text or "").isdigit() or int(message.text) < 1:
+        await message.answer(TEXTS[await get_lang(message.from_user.id) or "uz"]["bad_number"]); return
     await state.update_data(max_users=int(message.text))
     data = await state.get_data()
-    
-    if data.get('ctype') == 'other':
-        await ask_channel_selection(message, state)
+    if data["kind"] == "account":
+        await message.answer(TEXTS[await get_lang(message.from_user.id) or "uz"]["ask_accounts"], parse_mode="HTML")
+        await state.set_state(ContestFlow.accounts)
     else:
-        lang = await get_user_lang(message.from_user.id) or 'uz'
-        await message.answer(TEXTS[lang]['ask_accounts'], parse_mode="HTML")
-        await state.set_state(AdminCreateContest.waiting_accounts)
+        await choose_publish_channel(message, state)
 
-@dp.message(AdminCreateContest.waiting_accounts)
-async def process_accounts(message: types.Message, state: FSMContext):
+@dp.message(ContestFlow.accounts)
+async def account_lines(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    accs = [line.strip() for line in message.text.split("\n") if line.strip()]
-    if len(accs) < data['p_count']:
-        lang = await get_user_lang(message.from_user.id) or 'uz'
-        await message.answer(TEXTS[lang]['accounts_mismatch'].format(prizes_count=data['p_count']))
-        return
-    await state.update_data(accounts=accs)
-    await ask_channel_selection(message, state)
+    lines = [line.strip() for line in (message.text or "").splitlines() if line.strip()]
+    if len(lines) != data["prize_count"]:
+        t = TEXTS[await get_lang(message.from_user.id) or "uz"]
+        await message.answer(t["count_mismatch"].format(n=data["prize_count"])); return
+    await state.update_data(accounts=lines)
+    await choose_publish_channel(message, state)
 
-async def ask_channel_selection(message: types.Message, state: FSMContext):
-    channels = await channels_col.find({"type": "channel"}).to_list(length=100)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=ch.get('title'), callback_data=f"tchan_{ch.get('chat_id')}")] for ch in channels])
-    await message.answer("Konkurs qilinadigan kanalni tanlang:", reply_markup=kb)
-    await state.set_state(AdminCreateContest.waiting_target_channel)
+async def choose_publish_channel(message, state):
+    docs = await channels.find({"type": "channel"}).to_list(100)
+    docs = [d for d in docs if d.get("chat_id") or d.get("channel_id")]
+    if not docs:
+        await message.answer("Avval ODDIY KANAL sifatida post chiqariladigan kanalni qo'shing. Bot kanalda admin bo'lsin.")
+        await state.clear(); return
+    rows = []
+    for d in docs:
+        cid = d.get("chat_id") or d.get("channel_id")
+        rows.append([InlineKeyboardButton(text=d.get("title", "Kanal")[:60], callback_data=f"pub:{cid}")])
+    await message.answer(TEXTS[await get_lang(message.from_user.id) or "uz"]["pick_channel"], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await state.set_state(ContestFlow.channel)
 
-@dp.callback_query(F.data.startswith("tchan_"), AdminCreateContest.waiting_target_channel)
-async def publish_contest(call: CallbackQuery, state: FSMContext):
-    chid = int(call.data.replace("tchan_", ""))
-    d = await state.get_data()
-    
-    ctype = d.get('ctype', 'account')
-    p_count = d['p_count']
-    max_users = d['max_users']
-    accounts = d.get('accounts', [])
-    custom_prizes = d.get('custom_prizes', '')
-
-    if ctype == 'other':
-        prizes_text = custom_prizes
+@dp.callback_query(F.data.startswith("pub:"), ContestFlow.channel)
+async def publish(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer("Admin only", show_alert=True); return
+    data = await state.get_data()
+    try: chat_id = int(call.data.split(":", 1)[1])
+    except ValueError:
+        await call.answer("Invalid channel", show_alert=True); return
+    kind = data["kind"]
+    if kind == "account":
+        prize_lines = data["accounts"]
+        prize_text = f"{len(prize_lines)}ta akkaunt"
     else:
-        prizes_text = f"{p_count}ta akkaunt"
+        prize_lines = data["prize_lines"]
+        prize_text = data["custom_prizes"]
+    doc = {
+        "kind": kind, "prize_count": len(prize_lines), "prize_lines": prize_lines,
+        "prize_text": prize_text, "max_users": data["max_users"], "current": 0,
+        "participants": [], "status": "active", "chat_id": chat_id,
+        "lang": data.get("admin_lang", "uz"), "created_at": datetime.now(timezone.utc)
+    }
+    result = await contests.insert_one(doc)
+    cid = str(result.inserted_id)
+    me = await bot.get_me()
+    markup = contest_markup(me.username, cid)
+    body = contest_post(doc, 0)
+    try:
+        sent = await bot.send_message(chat_id, body, parse_mode="HTML", reply_markup=markup)
+        await contests.update_one({"_id": result.inserted_id}, {"$set": {"message_id": sent.message_id}})
+        await call.message.edit_text("✅ Konkurs kanalga joylandi!")
+    except Exception as exc:
+        await contests.delete_one({"_id": result.inserted_id})
+        await call.message.edit_text(f"❌ Postni yuborib bo'lmadi: {escape(str(exc))}", parse_mode="HTML")
+    await call.answer(); await state.clear()
 
-    res = await contests_col.insert_one({
-        "ctype": ctype,
-        "p_count": p_count,
-        "max_users": max_users,
-        "curr": 0,
-        "status": "active",
-        "chid": chid,
-        "accounts": accounts,
-        "custom_prizes": custom_prizes,
-        "prizes_text": prizes_text,
-        "parts": [],
-        "at": datetime.now()
-    })
-    cid = str(res.inserted_id)
-    b = await bot.get_me()
+def contest_markup(username, cid):
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="GOO 🎁", url=f"https://t.me/{username}?start=contest_{cid}")]])
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="GOO 🎁", url=f"https://t.me/{b.username}?start=contest_{cid}")]])
-    
-    uz_text = TEXTS['uz']['channel_msg_uz'].format(prizes_text=prizes_text, current=0, max_users=max_users)
-    en_text = TEXTS['en']['channel_msg_en'].format(prizes_text=prizes_text, current=0, max_users=max_users)
-    full_msg = f"{uz_text}\n\n<i>{en_text}</i>"
+def contest_post(c, current):
+    prize = escape(c.get("prize_text", ""))
+    uz = TEXTS["uz"]["started"].format(prizes=prize, current=current, limit=c["max_users"])
+    en = TEXTS["en"]["started_en"].format(prizes=prize, current=current, limit=c["max_users"])
+    return uz + "\n\n<blockquote><i>" + en + "</i></blockquote>"
 
-    msg = await bot.send_message(chat_id=chid, text=full_msg, parse_mode="HTML", reply_markup=kb)
-    await contests_col.update_one({"_id": res.inserted_id}, {"$set": {"msgid": msg.message_id}})
-    await call.message.edit_text("✅ Konkurs kanalga muvaffaqiyatli joylandi!")
+# Join / draw
+async def join_contest(uid, cid_text, message):
+    lang = await get_lang(uid) or "uz"
+    try: oid = ObjectId(cid_text)
+    except Exception:
+        await message.answer("Konkurs havolasi noto'g'ri."); return
+    if not await check_subscriptions(uid):
+        await message.answer(TEXTS[lang]["subscribe"], reply_markup=await subscription_keyboard(lang, cid_text)); return
+    # Atomic registration prevents duplicate joins and overfilling.
+    result = await contests.update_one({"_id": oid, "status": "active", "participants": {"$ne": uid}, "$expr": {"$lt": ["$current", "$max_users"]}}, {"$addToSet": {"participants": uid}, "$inc": {"current": 1}})
+    if result.modified_count == 0:
+        c = await contests.find_one({"_id": oid})
+        if not c or c.get("status") != "active":
+            await message.answer("Bu konkurs yakunlangan yoki mavjud emas."); return
+        if uid in c.get("participants", []):
+            await message.answer(TEXTS[lang]["already"]); return
+        await message.answer("Konkursda qatnashchilar soni to'lgan."); return
+    c = await contests.find_one({"_id": oid})
+    await users.update_one({"user_id": uid}, {"$set": {"username": getattr(message.from_user, "username", None), "first_name": getattr(message.from_user, "first_name", "")}}, upsert=True)
+    await message.answer(TEXTS[lang]["joined"], reply_markup=main_keyboard(uid, lang))
+    try:
+        me = await bot.get_me()
+        await bot.edit_message_text(chat_id=c["chat_id"], message_id=c["message_id"], text=contest_post(c, c["current"]), parse_mode="HTML", reply_markup=contest_markup(me.username, cid_text))
+    except Exception:
+        log.exception("Could not update contest post")
+    if c["current"] >= c["max_users"]:
+        await finish_contest(oid)
+
+async def finish_contest(oid):
+    # Claim finish exactly once, even if two joins arrive together.
+    claimed = await contests.update_one({"_id": oid, "status": "active", "$expr": {"$gte": ["$current", "$max_users"]}}, {"$set": {"status": "drawing"}})
+    if claimed.modified_count == 0: return
+    c = await contests.find_one({"_id": oid})
+    participants = c.get("participants", [])
+    prize_lines = c.get("prize_lines", [])
+    count = min(len(participants), len(prize_lines))
+    winners = random.sample(participants, count) if count else []
+    rows = []
+    medals = ["1️⃣ OʻRIN🥇", "2️⃣ OʻRIN🥈", "3️⃣ OʻRIN🥉"]
+    for index, uid in enumerate(winners):
+        user = await users.find_one({"user_id": uid}) or {}
+        name = user.get("username")
+        display = "@" + name if name else escape(user.get("first_name") or str(uid))
+        label = medals[index] if index < len(medals) else f"{index+1}-OʻRIN🏆"
+        rows.append(f"{label} - {display}")
+        prize = prize_lines[index]
+        if c["kind"] == "account":
+            await prizes.insert_one({"user_id": uid, "contest_id": str(oid), "account": prize, "created_at": datetime.now(timezone.utc)})
+            try: await bot.send_message(uid, f"🎉 Tabriklaymiz! Sovriningiz:\n<code>{escape(prize)}</code>", parse_mode="HTML")
+            except Exception: log.info("Could not DM winner %s", uid)
+        else:
+            try: await bot.send_message(uid, f"🎉 Tabriklaymiz! Siz yutdingiz:\n{escape(prize)}", parse_mode="HTML")
+            except Exception: log.info("Could not DM winner %s", uid)
+    final = TEXTS["uz"]["finished"].format(winners="\n".join(rows) if rows else "Gʻolib aniqlanmadi.")
+    try: await bot.edit_message_text(chat_id=c["chat_id"], message_id=c["message_id"], text=final, parse_mode="HTML", reply_markup=None)
+    except Exception: log.exception("Could not publish winner list")
+    await contests.update_one({"_id": oid}, {"$set": {"status": "finished", "winners": winners}})
+
+# Prizes menu
+@dp.message(F.text.in_(PRIZE_BUTTONS))
+async def show_prizes(message: types.Message):
+    lang = await get_lang(message.from_user.id) or "uz"
+    docs = await prizes.find({"user_id": message.from_user.id}).to_list(100)
+    if not docs:
+        await message.answer(TEXTS[lang]["no_prizes"]); return
+    text = TEXTS[lang]["my_prizes"] + "\n".join(f"{i}. <code>{escape(p['account'])}</code>" for i, p in enumerate(docs, 1))
+    await message.answer(text, parse_mode="HTML")
+
+# Required subscription admin menu
+@dp.message(F.text.in_(SUB_BUTTONS))
+async def sub_menu(message: types.Message):
+    if message.from_user.id != ADMIN_ID: return
+    lang = await get_lang(message.from_user.id) or "uz"; t = TEXTS[lang]
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t["add"], callback_data="sub:add")], [InlineKeyboardButton(text=t["remove"], callback_data="sub:remove")]])
+    await message.answer(t["channels_menu"], reply_markup=kb)
+
+@dp.callback_query(F.data == "sub:add")
+async def sub_add_menu(call: CallbackQuery):
+    lang = await get_lang(call.from_user.id) or "uz"; t = TEXTS[lang]
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t["channel"], callback_data="subtype:channel")], [InlineKeyboardButton(text=t["group"], callback_data="subtype:group")], [InlineKeyboardButton(text=t["request"], callback_data="subtype:request")]])
+    await call.message.edit_text(t["choose_sub"], reply_markup=kb); await call.answer()
+
+@dp.callback_query(F.data.startswith("subtype:"))
+async def sub_type(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID: await call.answer("Admin only", show_alert=True); return
+    kind = call.data.split(":")[1]; lang = await get_lang(call.from_user.id) or "uz"
+    prompt = TEXTS[lang][{"channel":"ask_channel", "group":"ask_group", "request":"ask_request"}[kind]]
+    await state.update_data(sub_type=kind); await state.set_state(SubFlow.link)
+    await call.message.edit_text(prompt); await call.answer()
+
+@dp.message(SubFlow.link)
+async def save_sub(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID: return
+    data = await state.get_data(); kind = data["sub_type"]; raw = (message.text or "").strip()
+    if not raw: await message.answer("Link yuboring."); return
+    try:
+        if kind in ("channel", "group"):
+            identifier = raw
+            if raw.startswith("https://t.me/"):
+                username = raw.rstrip("/").split("/")[-1]
+                if username.startswith("+") or username.startswith("joinchat"):
+                    raise ValueError("Private invite link orqali chat ID aniqlab bo'lmaydi. Public @username yoki chat ID kerak.")
+                identifier = "@" + username
+            chat = await bot.get_chat(identifier)
+            chat_id, title = chat.id, chat.title or raw
+            url = normalize_url(raw) if raw.startswith("@") or "t.me/" in raw else f"https://t.me/{raw.lstrip('@')}"
+        else:
+            # For Join Request checks, admin must provide chat ID/username plus invite link as: CHAT_ID | URL
+            if "|" not in raw:
+                raise ValueError("Zayafka kanali uchun CHAT_ID | invite-link ko'rinishida yuboring.")
+            left, url = [part.strip() for part in raw.split("|", 1)]
+            chat = await bot.get_chat(left)
+            chat_id, title = chat.id, chat.title or left
+            url = normalize_url(url)
+        await channels.insert_one({"type": kind, "chat_id": chat_id, "title": title, "url": url, "created_at": datetime.now(timezone.utc)})
+        await message.answer(TEXTS[await get_lang(message.from_user.id) or "uz"]["added"])
+    except Exception as exc:
+        await message.answer("Kanalni qo'shib bo'lmadi: " + str(exc))
+        return
     await state.clear()
 
-# ==========================================
-# KONKURSGA QATNASHISH VA YAKUNLASH
-# ==========================================
-async def process_join_contest(user_id: int, contest_id_str: str, message: types.Message):
-    lang = await get_user_lang(user_id) or 'uz'
-    t = TEXTS[lang]
-    
-    try:
-        contest_obj_id = ObjectId(contest_id_str)
-    except Exception:
-        await message.answer("⚠️ Noto'g'ri konkurs havolasi.", reply_markup=get_main_keyboard(user_id, lang))
-        return
+@dp.callback_query(F.data == "sub:remove")
+async def sub_remove_list(call: CallbackQuery):
+    docs = await channels.find().to_list(100)
+    if not docs:
+        await call.message.edit_text(TEXTS[await get_lang(call.from_user.id) or "uz"]["none"]); await call.answer(); return
+    rows = [[InlineKeyboardButton(text="🗑 " + d.get("title", "channel")[:50], callback_data=f"rm:{d['_id']}")] for d in docs]
+    await call.message.edit_text("Olib tashlash uchun tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)); await call.answer()
 
-    contest = await contests_col.find_one({"_id": contest_obj_id})
-    if not contest or contest['status'] != 'active':
-        await message.answer("⚠️ Bu konkurs yakunlangan yoki mavjud emas.", reply_markup=get_main_keyboard(user_id, lang))
-        return
+@dp.callback_query(F.data.startswith("rm:"))
+async def remove_sub(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID: await call.answer("Admin only", show_alert=True); return
+    try: oid = ObjectId(call.data.split(":", 1)[1])
+    except Exception: await call.answer("Invalid", show_alert=True); return
+    await channels.delete_one({"_id": oid})
+    await call.message.edit_text(TEXTS[await get_lang(call.from_user.id) or "uz"]["removed"]); await call.answer()
 
-    is_subbed = await check_user_subscriptions(user_id)
-    if not is_subbed:
-        keyboard = await get_required_channels_keyboard(lang=lang, contest_id=contest_id_str)
-        await message.answer(t['must_subscribe'], reply_markup=keyboard)
-        return
+@dp.chat_join_request()
+async def on_join_request(update: ChatJoinRequest):
+    # Telegram delivers this update only if the bot is admin with invite-link/join-request rights.
+    await join_requests.update_one({"user_id": update.from_user.id, "chat_id": update.chat.id}, {"$set": {"user_id": update.from_user.id, "chat_id": update.chat.id, "created_at": datetime.now(timezone.utc)}}, upsert=True)
 
-    if user_id in contest['participants']: # Xavfsizlik uchun tekshiruv
-        pass
+@dp.message(F.text.in_(STAT_BUTTONS))
+async def stats(message: types.Message):
+    if message.from_user.id != ADMIN_ID: return
+    lang = await get_lang(message.from_user.id) or "uz"
+    await message.answer(TEXTS[lang]["stats"].format(users=await users.count_documents({}), contests=await contests.count_documents({})))
 
-    if user_id in contest.get('parts', []):
-        await message.answer(t['already_joined'], reply_markup=get_main_keyboard(user_id, lang))
-        return
-
-    await contests_col.update_one(
-        {"_id": contest_obj_id},
-        {"$push": {"parts": user_id}, "$inc": {"curr": 1}}
-    )
-    
-    updated_contest = await contests_col.find_one({"_id": contest_obj_id})
-    curr = updated_contest['curr']
-    max_u = updated_contest['max_users']
-    ch_id = updated_contest['chid']
-    ch_msg_id = updated_contest.get('msgid')
-
-    await message.answer(t['joined_success'], reply_markup=get_main_keyboard(user_id, lang))
-
-    try:
-        b = await bot.get_me()
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="GOO 🎁", url=f"https://t.me/{b.username}?start=contest_{contest_id_str}")]])
-        prizes_text = updated_contest['prizes_text']
-        uz_text = TEXTS['uz']['channel_msg_uz'].format(prizes_text=prizes_text, current=curr, max_users=max_u)
-        en_text = TEXTS['en']['channel_msg_en'].format(prizes_text=prizes_text, current=curr, max_users=max_u)
-        full_msg = f"{uz_text}\n\n<i>{en_text}</i>"
-        
-        if ch_msg_id:
-            await bot.edit_message_text(chat_id=ch_id, message_id=ch_msg_id, text=full_msg, parse_mode="HTML", reply_markup=kb)
-    except Exception:
-        pass
-
-    if curr >= max_u:
-        await finish_contest(contest_obj_id)
-
-async def finish_contest(contest_obj_id: ObjectId):
-    contest = await contests_col.find_one({"_id": contest_obj_id})
-    if not contest or contest['status'] != 'active':
-        return
-
-    await contests_col.update_one({"_id": contest_obj_id}, {"$set": {"status": "finished"}})
-    
-    parts = contest.get('parts', [])
-    accounts = contest.get('accounts', [])
-    p_count = contest['p_count']
-    channel_id = contest['chid']
-    ch_msg_id = contest.get('msgid')
-
-    winners_count = min(len(parts), p_count)
-    winners = random.sample(parts, winners_count) if parts else []
-
-    winners_text = ""
-    medals = ["1️⃣ OʻRIN🥇", "2️⃣ OʻRIN🥈", "3️⃣ OʻRIN🥉", "4️⃣ OʻRIN🏆", "5️⃣ OʻRIN🏆", "6️⃣ OʻRIN🏆", "7️⃣ OʻRIN🏆", "8️⃣ OʻRIN🏆", "9️⃣ OʻRIN🏆", "🔟 OʻRIN🏆"]
-
-    for idx, winner_id in enumerate(winners):
-        acc = accounts[idx] if idx < len(accounts) else f"Sovrin #{idx+1}"
-        if contest.get('ctype') == 'account':
-            await prizes_col.insert_one({
-                "user_id": winner_id,
-                "contest_id": str(contest_obj_id),
-                "account": acc,
-                "won_at": datetime.now()
-            })
-        
-        try:
-            chat_member = await bot.get_chat(winner_id)
-            if chat_member.username:
-                user_display = f"@{chat_member.username}"
-            else:
-                user_display = chat_member.first_name
-        except Exception:
-            user_display = f"ID: {winner_id}"
-
-        medal_title = medals[idx] if idx < len(medals) else f"{idx+1} OʻRIN🏆"
-        winners_text += f"{medal_title} - {user_display}\n"
-
-        u_lang = await get_user_lang(winner_id) or 'uz'
-        try:
-            if contest.get('ctype') == 'account':
-                await bot.send_message(winner_id, TEXTS[u_lang]['won_notify'].format(account=acc), parse_mode="HTML")
-            else:
-                await bot.send_message(winner_id, f"🎉 TASHAKKURLAR! Siz konkursda g'olib bo'ldingiz!\n\nSovriningiz:\n{contest['custom_prizes']}")
-        except Exception:
-            pass
-
-    final_text = TEXTS['uz']['contest_finished_channel'].format(winners_text=winners_text)
-    try:
-        if ch_msg_id:
-            await bot.edit_message_text(chat_id=channel_id, message_id=ch_msg_id, text=final_text, parse_mode="HTML", reply_markup=None)
-    except Exception:
-        pass
-
-# ==========================================
-# ASOSIY ISHGA TUSHIRISH (MAIN)
-# ==========================================
 async def main():
-    threading.Thread(target=run_flask, daemon=True).start()
-    logging.basicConfig(level=logging.INFO)
+    # Render Web Service has a dynamic PORT. Flask is only a health endpoint; bot uses polling.
+    threading.Thread(target=run_web, daemon=True).start()
+    await mongo.admin.command("ping")
     await bot.delete_webhook(drop_pending_updates=True)
-    print("Bot 100% to'liq, barcha funksiyalar va akkaunt formatlari bilan ishga tushdi!")
-    await dp.start_polling(bot)
+    log.info("MongoDB connected; starting Telegram polling")
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception:
+        log.exception("Bot stopped due to startup/runtime error")
+        raise
